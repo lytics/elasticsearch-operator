@@ -1,0 +1,18 @@
+{
+  "apiVersion": "enterprises.upmc.com/v1",
+  "kind": "ElasticsearchCluster",
+  "metadata": {
+    "name": "es-cluster"
+  },
+  "spec": {
+    "client-node-replicas": 1,
+    "master-node-replicas": 3,
+    "data-node-replicas": 3,
+    "zones": ["us-central1-c", "us-central1-f"],
+    "data-volume-size": "10Gi",
+    "storage": {
+      "type": "pd-ssd",
+      "storage-class-provisioner": "kubernetes.io/gce-pd"
+    }
+  }
+}
