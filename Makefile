@@ -17,6 +17,9 @@ container: build
 push:
 	docker push $(PREFIX)/elasticsearch-operator:$(TAG)
 
+push-gcr:
+	gcloud docker -- push $(PREFIX)/elasticsearch-operator:$(TAG)
+
 clean:
 	rm -f elasticsearch-operator
 
