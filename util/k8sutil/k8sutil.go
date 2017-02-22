@@ -592,7 +592,7 @@ func (k *K8sutil) CreateClientMasterDeployment(deploymentType, baseImage, cluste
 }
 
 // CreateDataNodeDeployment creates the data node deployment
-func (k *K8sutil) CreateDataNodeDeployment(replicas *int32, baseImage, clusterName, storageClass, dataDiskSize string) error {
+func (k *K8sutil) CreateDataNodeDeployment(replicas int32, baseImage, clusterName, storageClass, dataDiskSize string, heapSize int) error {
 
 	statefulSetName := fmt.Sprintf("%s-%s", dataDeploymentName, storageClass)
 
@@ -604,10 +604,6 @@ func (k *K8sutil) CreateDataNodeDeployment(replicas *int32, baseImage, clusterNa
 
 		logrus.Infof("StatefulSet %s not found, creating...", statefulSetName)
 
-		const jvmXms = 1024
-		const jvmXmx = 1024
-		spec := CreateDataNodeStatefulSetSpec(baseImage, clusterName, statefulSetName, storageClass, jvmXms, jvmXmx, volumeSize)
-
 		statefulSet := &apps.StatefulSet{}
 		statefulSet.ObjectMeta = v1.ObjectMeta{
 			Labels: map[string]string{
@@ -615,13 +611,10 @@ func (k *K8sutil) CreateDataNodeDeployment(replicas *int32, baseImage, clusterNa
 				"role":      "data",
 				"name":      statefulSetName,
 			},
-			Annotations: map[string]string{
-				"pod.beta.kubernetes.io/init-containers": "[ { \"name\": \"sysctl\", \"image\": \"busybox\", \"imagePullPolicy\": \"IfNotPresent\", \"command\": [\"sysctl\", \"-w\", \"vm.max_map_count=262144\"], \"securityContext\": { \"privileged\": true } }]",
-			},
 		}
-		statefulSet.Spec = *spec
-		_, err := k.Kclient.StatefulSets(namespace).Create(statefulSet)
+		statefulSet.Spec = *CreateDataNodeStatefulSetSpec(baseImage, clusterName, statefulSetName, storageClass, heapSize, heapSize, volumeSize, replicas)
 
+		_, err := k.Kclient.StatefulSets(namespace).Create(statefulSet)
 		if err != nil {
 			logrus.Error("Could not create data stateful set: ", err)
 			return err
@@ -633,8 +626,8 @@ func (k *K8sutil) CreateDataNodeDeployment(replicas *int32, baseImage, clusterNa
 		}
 
 		//scale replicas?
-		if statefulSet.Spec.Replicas != replicas {
-			statefulSet.Spec.Replicas = replicas
+		if statefulSet.Spec.Replicas != &replicas {
+			statefulSet.Spec.Replicas = &replicas
 
 			_, err := k.Kclient.StatefulSets(namespace).Update(statefulSet)
 

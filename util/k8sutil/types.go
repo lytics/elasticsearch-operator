@@ -33,8 +33,7 @@ import (
 	"k8s.io/client-go/pkg/apis/extensions/v1beta1"
 )
 
-func CreateDataNodeStatefulSetSpec(baseImage, clusterName, statefulSetName, storageClass string, mlow, mmax int, volumeSize resource.Quantity) *apps.StatefulSetSpec {
-	replicas := int32(1)
+func CreateDataNodeStatefulSetSpec(baseImage, clusterName, statefulSetName, storageClass string, mlow, mmax int, volumeSize resource.Quantity, replicas int32) *apps.StatefulSetSpec {
 	memOpts := fmt.Sprintf("-Xms%dm -Xmx%dm", mlow, mmax)
 	spec := &apps.StatefulSetSpec{
 		Replicas:    &replicas,
@@ -94,6 +93,11 @@ func CreateDataNodeStatefulSetSpec(baseImage, clusterName, statefulSetName, stor
 							v1.ContainerPort{
 								Name:          "transport",
 								ContainerPort: 9300,
+								Protocol:      v1.ProtocolTCP,
+							},
+							v1.ContainerPort{
+								Name:          "http",
+								ContainerPort: 9200,
 								Protocol:      v1.ProtocolTCP,
 							},
 						},

@@ -36,6 +36,9 @@ type ElasticSearchCluster struct {
 
 // ClusterSpec defines cluster options
 type ClusterSpec struct {
+	// ClusterName is the elasticsearch cluster name
+	ClusterName string `json:"cluster-name"`
+
 	// ClientNodeSize defines how many client nodes to have in cluster
 	ClientNodeReplicas int32 `json:"client-node-replicas"`
 
@@ -58,7 +61,11 @@ type ClusterSpec struct {
 	// to the data nodes in the ES cluster
 	DataDiskSize string `json:"data-volume-size"`
 
-	// DataDiskSize specifies the docker image to use (optional)
+	// DataHeapSize specifies how much heap should be allocated for Elasticsearch.
+	// Must be lower that Pod Memory specified
+	DataHeapSize int `json:"data-heap-size"`
+
+	// ElasticSearchImage specifies the docker image to use (optional)
 	ElasticSearchImage string `json:"elastic-search-image"`
 
 	// Snapshot defines how snapshots are scheduled

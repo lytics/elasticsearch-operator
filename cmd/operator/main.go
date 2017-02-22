@@ -79,7 +79,7 @@ func Main() int {
 		return 1
 	}
 
-	doneChan := make(chan struct{})
+	doneChan := make(chan struct{}) // TODO: Replace with context.Context
 	var wg sync.WaitGroup
 
 	// Kick it off

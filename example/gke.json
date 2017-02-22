@@ -5,10 +5,12 @@
     "name": "es-cluster"
   },
   "spec": {
+    "cluster-name": "primary",
     "client-node-replicas": 1,
     "master-node-replicas": 3,
     "data-node-replicas": 3,
     "zones": ["us-central1-c", "us-central1-f"],
+    "data-heap-size": 4096,
     "data-volume-size": "10Gi",
     "storage": {
       "type": "pd-ssd",
