@@ -530,7 +530,7 @@ func (k *K8sutil) DeleteStatefulSet() error {
 }
 
 // CreateClientMasterDeployment creates the client or master deployment
-func (k *K8sutil) CreateClientMasterDeployment(deploymentType, baseImage string, replicas *int32) error {
+func (k *K8sutil) CreateClientMasterDeployment(deploymentType, baseImage, clusterName string, replicas *int32) error {
 
 	var deploymentName, role, isNodeMaster, httpEnable string
 
@@ -552,116 +552,17 @@ func (k *K8sutil) CreateClientMasterDeployment(deploymentType, baseImage string,
 	if len(deployment.Name) == 0 {
 		logrus.Infof("%s not found, creating...", deploymentName)
 
-		deployment := &v1beta1.Deployment{
-			ObjectMeta: v1.ObjectMeta{
-				Name: deploymentName,
-				Labels: map[string]string{
-					"component": "elasticsearch",
-					"role":      role,
-					"name":      deploymentName,
-				},
-			},
-			Spec: v1beta1.DeploymentSpec{
-				Replicas: replicas,
-				Template: v1.PodTemplateSpec{
-					ObjectMeta: v1.ObjectMeta{
-						Labels: map[string]string{
-							"component": "elasticsearch",
-							"role":      role,
-							"name":      deploymentName,
-						},
-						Annotations: map[string]string{
-							"pod.beta.kubernetes.io/init-containers": "[ { \"name\": \"sysctl\", \"image\": \"busybox\", \"imagePullPolicy\": \"IfNotPresent\", \"command\": [\"sysctl\", \"-w\", \"vm.max_map_count=262144\"], \"securityContext\": { \"privileged\": true } }]",
-						},
-					},
-					Spec: v1.PodSpec{
-						Containers: []v1.Container{
-							v1.Container{
-								Name: deploymentName,
-								SecurityContext: &v1.SecurityContext{
-									Privileged: &[]bool{true}[0],
-									Capabilities: &v1.Capabilities{
-										Add: []v1.Capability{
-											"IPC_LOCK",
-										},
-									},
-								},
-								Image:           baseImage,
-								ImagePullPolicy: "Always",
-								Env: []v1.EnvVar{
-									v1.EnvVar{
-										Name: "NAMESPACE",
-										ValueFrom: &v1.EnvVarSource{
-											FieldRef: &v1.ObjectFieldSelector{
-												FieldPath: "metadata.namespace",
-											},
-										},
-									},
-									v1.EnvVar{
-										Name:  "CLUSTER_NAME",
-										Value: "myesdb",
-									},
-									v1.EnvVar{
-										Name:  "NODE_MASTER",
-										Value: isNodeMaster,
-									},
-									v1.EnvVar{
-										Name:  "NODE_DATA",
-										Value: "false",
-									},
-									v1.EnvVar{
-										Name:  "HTTP_ENABLE",
-										Value: httpEnable,
-									},
-									v1.EnvVar{
-										Name:  "ES_JAVA_OPTS",
-										Value: "-Xms1024m -Xmx1024m",
-									},
-								},
-								Ports: []v1.ContainerPort{
-									v1.ContainerPort{
-										Name:          "transport",
-										ContainerPort: 9300,
-										Protocol:      v1.ProtocolTCP,
-									},
-									v1.ContainerPort{
-										Name:          "http",
-										ContainerPort: 9200,
-										Protocol:      v1.ProtocolTCP,
-									},
-								},
-								VolumeMounts: []v1.VolumeMount{
-									v1.VolumeMount{
-										Name:      "storage",
-										MountPath: "/data",
-									},
-									v1.VolumeMount{
-										Name:      "es-certs",
-										MountPath: "/elasticsearch/config/certs",
-									},
-								},
-							},
-						},
-						Volumes: []v1.Volume{
-							v1.Volume{
-								Name: "storage",
-								VolumeSource: v1.VolumeSource{
-									EmptyDir: &v1.EmptyDirVolumeSource{},
-								},
-							},
-							v1.Volume{
-								Name: "es-certs",
-								VolumeSource: v1.VolumeSource{
-									Secret: &v1.SecretVolumeSource{
-										SecretName: "es-certs",
-									},
-								},
-							},
-						},
-					},
-				},
+		spec := CreateNodeDeployment(baseImage, deploymentName, role, isNodeMaster, httpEnable, clusterName, replicas)
+		deployment := &v1beta1.Deployment{}
+		deployment.ObjectMeta = v1.ObjectMeta{
+			Name: deploymentName,
+			Labels: map[string]string{
+				"component": "elasticsearch",
+				"role":      role,
+				"name":      deploymentName,
 			},
 		}
+		deployment.Spec = *spec
 
 		_, err := k.Kclient.Deployments(namespace).Create(deployment)
 
@@ -691,7 +592,7 @@ func (k *K8sutil) CreateClientMasterDeployment(deploymentType, baseImage string,
 }
 
 // CreateDataNodeDeployment creates the data node deployment
-func (k *K8sutil) CreateDataNodeDeployment(replicas *int32, baseImage, storageClass string, dataDiskSize string) error {
+func (k *K8sutil) CreateDataNodeDeployment(replicas *int32, baseImage, clusterName, storageClass, dataDiskSize string) error {
 
 	statefulSetName := fmt.Sprintf("%s-%s", dataDeploymentName, storageClass)
 
@@ -703,123 +604,22 @@ func (k *K8sutil) CreateDataNodeDeployment(replicas *int32, baseImage, storageCl
 
 		logrus.Infof("StatefulSet %s not found, creating...", statefulSetName)
 
-		statefulSet := &apps.StatefulSet{
-			ObjectMeta: v1.ObjectMeta{
-				Name: statefulSetName,
-				Labels: map[string]string{
-					"component": "elasticsearch",
-					"role":      "data",
-					"name":      statefulSetName,
-				},
+		const jvmXms = 1024
+		const jvmXmx = 1024
+		spec := CreateDataNodeStatefulSetSpec(baseImage, clusterName, statefulSetName, storageClass, jvmXms, jvmXmx, volumeSize)
+
+		statefulSet := &apps.StatefulSet{}
+		statefulSet.ObjectMeta = v1.ObjectMeta{
+			Labels: map[string]string{
+				"component": "elasticsearch",
+				"role":      "data",
+				"name":      statefulSetName,
 			},
-			Spec: apps.StatefulSetSpec{
-				Replicas:    replicas,
-				ServiceName: "es-data-svc",
-				Template: v1.PodTemplateSpec{
-					ObjectMeta: v1.ObjectMeta{
-						Labels: map[string]string{
-							"component": "elasticsearch",
-							"role":      "data",
-							"name":      statefulSetName,
-						},
-						Annotations: map[string]string{
-							"pod.beta.kubernetes.io/init-containers": "[ { \"name\": \"sysctl\", \"image\": \"busybox\", \"imagePullPolicy\": \"IfNotPresent\", \"command\": [\"sysctl\", \"-w\", \"vm.max_map_count=262144\"], \"securityContext\": { \"privileged\": true } }]",
-						},
-					},
-					Spec: v1.PodSpec{
-						Containers: []v1.Container{
-							v1.Container{
-								Name: statefulSetName,
-								SecurityContext: &v1.SecurityContext{
-									Privileged: &[]bool{true}[0],
-									Capabilities: &v1.Capabilities{
-										Add: []v1.Capability{
-											"IPC_LOCK",
-										},
-									},
-								},
-								Image:           baseImage,
-								ImagePullPolicy: "Always",
-								Env: []v1.EnvVar{
-									v1.EnvVar{
-										Name: "NAMESPACE",
-										ValueFrom: &v1.EnvVarSource{
-											FieldRef: &v1.ObjectFieldSelector{
-												FieldPath: "metadata.namespace",
-											},
-										},
-									},
-									v1.EnvVar{
-										Name:  "CLUSTER_NAME",
-										Value: "myesdb",
-									},
-									v1.EnvVar{
-										Name:  "NODE_MASTER",
-										Value: "false",
-									},
-									v1.EnvVar{
-										Name:  "HTTP_ENABLE",
-										Value: "false",
-									},
-									v1.EnvVar{
-										Name:  "ES_JAVA_OPTS",
-										Value: "-Xms1024m -Xmx1024m",
-									},
-								},
-								Ports: []v1.ContainerPort{
-									v1.ContainerPort{
-										Name:          "transport",
-										ContainerPort: 9300,
-										Protocol:      v1.ProtocolTCP,
-									},
-								},
-								VolumeMounts: []v1.VolumeMount{
-									v1.VolumeMount{
-										Name:      "es-data",
-										MountPath: "/data",
-									},
-									v1.VolumeMount{
-										Name:      "es-certs",
-										MountPath: "/elasticsearch/config/certs",
-									},
-								},
-							},
-						},
-						Volumes: []v1.Volume{
-							v1.Volume{
-								Name: "es-certs",
-								VolumeSource: v1.VolumeSource{
-									Secret: &v1.SecretVolumeSource{
-										SecretName: "es-certs",
-									},
-								},
-							},
-						},
-					},
-				},
-				VolumeClaimTemplates: []v1.PersistentVolumeClaim{
-					v1.PersistentVolumeClaim{
-						ObjectMeta: v1.ObjectMeta{
-							Name: "es-data",
-							Annotations: map[string]string{
-								"volume.beta.kubernetes.io/storage-class": storageClass,
-							},
-						},
-						Spec: v1.PersistentVolumeClaimSpec{
-							AccessModes: []v1.PersistentVolumeAccessMode{
-								v1.ReadWriteOnce,
-							},
-							Resources: v1.ResourceRequirements{
-								Requests: v1.ResourceList{
-									v1.ResourceStorage: volumeSize,
-								},
-							},
-						},
-					},
-				},
+			Annotations: map[string]string{
+				"pod.beta.kubernetes.io/init-containers": "[ { \"name\": \"sysctl\", \"image\": \"busybox\", \"imagePullPolicy\": \"IfNotPresent\", \"command\": [\"sysctl\", \"-w\", \"vm.max_map_count=262144\"], \"securityContext\": { \"privileged\": true } }]",
 			},
 		}
-
+		statefulSet.Spec = *spec
 		_, err := k.Kclient.StatefulSets(namespace).Create(statefulSet)
 
 		if err != nil {

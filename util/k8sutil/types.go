@@ -30,6 +30,7 @@ import (
 	"k8s.io/client-go/pkg/api/resource"
 	"k8s.io/client-go/pkg/api/v1"
 	apps "k8s.io/client-go/pkg/apis/apps/v1beta1"
+	"k8s.io/client-go/pkg/apis/extensions/v1beta1"
 )
 
 func CreateDataNodeStatefulSetSpec(baseImage, clusterName, statefulSetName, storageClass string, mlow, mmax int, volumeSize resource.Quantity) *apps.StatefulSetSpec {
@@ -142,4 +143,107 @@ func CreateDataNodeStatefulSetSpec(baseImage, clusterName, statefulSetName, stor
 		},
 	}
 	return spec
+}
+
+func CreateNodeDeployment(baseImage, deploymentName, role, isNodeMaster, httpEnable, clusterName string, replicas *int32) *v1beta1.DeploymentSpec {
+	return &v1beta1.DeploymentSpec{
+		Replicas: replicas,
+		Template: v1.PodTemplateSpec{
+			ObjectMeta: v1.ObjectMeta{
+				Labels: map[string]string{
+					"component": "elasticsearch",
+					"role":      role,
+					"name":      deploymentName,
+				},
+				Annotations: map[string]string{
+					"pod.beta.kubernetes.io/init-containers": "[ { \"name\": \"sysctl\", \"image\": \"busybox\", \"imagePullPolicy\": \"IfNotPresent\", \"command\": [\"sysctl\", \"-w\", \"vm.max_map_count=262144\"], \"securityContext\": { \"privileged\": true } }]",
+				},
+			},
+			Spec: v1.PodSpec{
+				Containers: []v1.Container{
+					v1.Container{
+						Name: deploymentName,
+						SecurityContext: &v1.SecurityContext{
+							Privileged: &[]bool{true}[0],
+							Capabilities: &v1.Capabilities{
+								Add: []v1.Capability{
+									"IPC_LOCK",
+								},
+							},
+						},
+						Image:           baseImage,
+						ImagePullPolicy: "Always",
+						Env: []v1.EnvVar{
+							v1.EnvVar{
+								Name: "NAMESPACE",
+								ValueFrom: &v1.EnvVarSource{
+									FieldRef: &v1.ObjectFieldSelector{
+										FieldPath: "metadata.namespace",
+									},
+								},
+							},
+							v1.EnvVar{
+								Name:  "CLUSTER_NAME",
+								Value: clusterName,
+							},
+							v1.EnvVar{
+								Name:  "NODE_MASTER",
+								Value: isNodeMaster,
+							},
+							v1.EnvVar{
+								Name:  "NODE_DATA",
+								Value: "false",
+							},
+							v1.EnvVar{
+								Name:  "HTTP_ENABLE",
+								Value: httpEnable,
+							},
+							v1.EnvVar{
+								Name:  "ES_JAVA_OPTS",
+								Value: "-Xms1024m -Xmx1024m",
+							},
+						},
+						Ports: []v1.ContainerPort{
+							v1.ContainerPort{
+								Name:          "transport",
+								ContainerPort: 9300,
+								Protocol:      v1.ProtocolTCP,
+							},
+							v1.ContainerPort{
+								Name:          "http",
+								ContainerPort: 9200,
+								Protocol:      v1.ProtocolTCP,
+							},
+						},
+						VolumeMounts: []v1.VolumeMount{
+							v1.VolumeMount{
+								Name:      "storage",
+								MountPath: "/data",
+							},
+							v1.VolumeMount{
+								Name:      "es-certs",
+								MountPath: "/elasticsearch/config/certs",
+							},
+						},
+					},
+				},
+				Volumes: []v1.Volume{
+					v1.Volume{
+						Name: "storage",
+						VolumeSource: v1.VolumeSource{
+							EmptyDir: &v1.EmptyDirVolumeSource{},
+						},
+					},
+					v1.Volume{
+						Name: "es-certs",
+						VolumeSource: v1.VolumeSource{
+							Secret: &v1.SecretVolumeSource{
+								SecretName: "es-certs",
+							},
+						},
+					},
+				},
+			},
+		},
+	}
 }

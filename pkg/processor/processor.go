@@ -39,6 +39,8 @@ var (
 	processorLock = &sync.Mutex{}
 )
 
+const clusterName = "myesdb" //TODO replace this from the 3rd party resource?
+
 // Processor object
 type Processor struct {
 	k8sclient *k8sutil.K8sutil
@@ -160,8 +162,8 @@ func (p *Processor) processElasticSearchCluster(c myspec.ElasticSearchCluster) e
 	p.k8sclient.CreateDataService()
 	p.k8sclient.CreateClientService()
 
-	p.k8sclient.CreateClientMasterDeployment("client", baseImage, &c.Spec.ClientNodeReplicas)
-	p.k8sclient.CreateClientMasterDeployment("master", baseImage, &c.Spec.MasterNodeReplicas)
+	p.k8sclient.CreateClientMasterDeployment("client", baseImage, clusterName, &c.Spec.ClientNodeReplicas)
+	p.k8sclient.CreateClientMasterDeployment("master", baseImage, clusterName, &c.Spec.MasterNodeReplicas)
 
 	zoneCount := 0
 	if len(c.Spec.Zones) != 0 {
@@ -175,13 +177,13 @@ func (p *Processor) processElasticSearchCluster(c myspec.ElasticSearchCluster) e
 		zoneDistribution := p.calculateZoneDistribution(c.Spec.DataNodeReplicas, zoneCount)
 
 		for index, count := range zoneDistribution {
-			p.k8sclient.CreateDataNodeDeployment(&count, p.baseImage, c.Spec.Zones[index], c.Spec.DataDiskSize)
+			p.k8sclient.CreateDataNodeDeployment(&count, p.baseImage, clusterName, c.Spec.Zones[index], c.Spec.DataDiskSize)
 		}
 	} else {
 		// No zones defined, rely on current provisioning logic which may break. Other strategy is to use emptyDir?
 		// NOTE: Issue with dynamic PV provisioning (https://github.com/kubernetes/kubernetes/issues/34583)
 		p.k8sclient.CreateStorageClass("es-default", c.Spec.Storage.StorageClassProvisoner, c.Spec.Storage.StorageType)
-		p.k8sclient.CreateDataNodeDeployment(func() *int32 { i := int32(c.Spec.DataNodeReplicas); return &i }(), p.baseImage, "es-default", c.Spec.DataDiskSize)
+		p.k8sclient.CreateDataNodeDeployment(iToP32(c.Spec.DataNodeReplicas), p.baseImage, clusterName, "es-default", c.Spec.DataDiskSize)
 	}
 
 	// Setup CronSchedule
@@ -241,4 +243,9 @@ func (p *Processor) calcBaseImage(baseImage, customImage string) string {
 	}
 
 	return baseImage
+}
+
+func iToP32(i int) *int32 {
+	i2 := int32(i)
+	return &i2
 }
