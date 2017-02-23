@@ -39,15 +39,6 @@ type ClusterSpec struct {
 	// ClusterName is the elasticsearch cluster name
 	ClusterName string `json:"cluster-name"`
 
-	// ClientNodeSize defines how many client nodes to have in cluster
-	ClientNodeReplicas int32 `json:"client-node-replicas"`
-
-	// MasterNodeSize defines how many client nodes to have in cluster
-	MasterNodeReplicas int32 `json:"master-node-replicas"`
-
-	// DataNodeSize defines how many client nodes to have in cluster
-	DataNodeReplicas int `json:"data-node-replicas"`
-
 	// NodeSelector specifies a map of key-value pairs. For the pod to be eligible
 	// to run on a node, the node must have each of the indicated key-value pairs as
 	// labels.
@@ -57,13 +48,13 @@ type ClusterSpec struct {
 	// to deploy persistent volumes for data nodes
 	Zones []string `json:"zones,omitempty"`
 
+	// NodeSpecs is a map of each node type's configuration
+	// settings.
+	NodeSpecs *NodeSpecs `json:"nodeSpecs,omitempty"`
+
 	// DataDiskSize specifies how large the persistent volume should be attached
 	// to the data nodes in the ES cluster
 	DataDiskSize string `json:"data-volume-size"`
-
-	// DataHeapSize specifies how much heap should be allocated for Elasticsearch.
-	// Must be lower that Pod Memory specified
-	DataHeapSize int `json:"data-heap-size"`
 
 	// ElasticSearchImage specifies the docker image to use (optional)
 	ElasticSearchImage string `json:"elastic-search-image"`
@@ -75,6 +66,28 @@ type ClusterSpec struct {
 	Storage Storage `json:"storage"`
 
 	Scheduler *snapshot.Scheduler
+}
+
+// NodeSpecs marshals ThirdPartyResource data for specifying each separate node
+// type which forms the elasticsearch cluster.
+type NodeSpecs struct {
+	Master *NodeTypeSettings `json:"master,omitempty"`
+	Client *NodeTypeSettings `json:"client,omitempty"`
+	Data   *NodeTypeSettings `json:"data,omitempty"`
+	Ingest *NodeTypeSettings `json:"ingest,omitempty"`
+}
+
+// NodeTypeSettings marshals Elasticsearch settings for each node type.
+// The data is used to configure settings for k8s Deployments or StatefulSets.
+type NodeTypeSettings struct {
+	Replicas int32  `json:"replicas,omitempty"`
+	CpuReq   string `json:"cpu-req,omitempty"`
+	MemReq   string `json:"mem-req,omitempty"`
+	CpuLimit string `json:"cpu-limit,omitempty"`
+	MemLimit string `json:"mem-limit,omitempty"`
+
+	HeapMax int `json:"heap-max,omitempty"`
+	HeapMin int `json:"heap-min,omitempty"`
 }
 
 // Snapshot defines all params to create / store snapshots
