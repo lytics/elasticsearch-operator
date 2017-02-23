@@ -34,6 +34,14 @@ Following parameters are available to customize the elastic cluster:
 - master-node-replicas: Number of client node replicas
 - data-node-replicas: Number of data node replicas
 - zones: Define which zones to deploy data nodes to for high availability (_Note: Zones are evenly distributed based upon number of data-node-replicas defined_)
+- node-specs: Configuration settings for each Elasticsearch node type: (master, client, data, ingest). Each node type is provisioned as a separate Kubernetes resource. CPU and Memory settings follow the [Kubernetes Compute Resources](https://kubernetes.io/docs/user-guide/compute-resources/) guidelines.
+  - replicas:     Replicas(Pods) of this node type
+  - cpu-req:      Requested CPU resources
+  - mem-req:      Requested Memory resources
+  - cpu-limit:    Maximum CPU resources allowed
+  - mem-limit:    Maximum Memory resources
+  - heap-max:     Java Heap maximum(integer of Megabytes) 
+  - heap-min:     Java Heap minimum(integer of Megabytes)
 - data-volume-size: Size of persistent volume to attach to data nodes
 - [snapshot](https://www.elastic.co/guide/en/elasticsearch/reference/current/modules-snapshots.html)
   - scheduler-enabled: If the cron scheduler should be running to enable snapshotting

@@ -5,10 +5,22 @@
     "name": "example-es-cluster"
   },
   "spec": {
-    "client-node-replicas": 3,
-    "master-node-replicas": 2,
-    "data-node-replicas": 3,
+    "cluster-name": "primary",
     "zones": ["us-east-1c", "us-east-1d", "us-east-1e"],
+    "node-specs":{
+        "master":{
+            "replicas": 2
+        },
+        "client": {
+            "replicas": 3
+        },
+        "data": {
+            "replicas": 3,
+            "cpu-req": "1000m",
+            "mem-req": "2Gi",
+            "heap-max": 1800
+        }
+    },
     "data-volume-size": "10Gi",
     "snapshot": {
       "scheduler-enabled": true,

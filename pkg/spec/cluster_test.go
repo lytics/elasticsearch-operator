@@ -14,7 +14,7 @@ var csRaw = []byte(`{
   "spec": {
     "cluster-name": "primary",
     "zones": ["us-central1-a", "us-central1-f"],
-    "nodeSpecs":{
+    "node-specs":{
         "master":{
             "replicas": 3
         },
@@ -30,7 +30,6 @@ var csRaw = []byte(`{
         },
         "ingest": {}
     },
-    "data-heap-size": 4096,
     "data-volume-size": "10Gi",
     "storage": {
       "type": "pd-ssd",

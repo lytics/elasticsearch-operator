@@ -50,7 +50,7 @@ type ClusterSpec struct {
 
 	// NodeSpecs is a map of each node type's configuration
 	// settings.
-	NodeSpecs *NodeSpecs `json:"nodeSpecs,omitempty"`
+	NodeSpecs *NodeSpecs `json:"node-specs,omitempty"`
 
 	// DataDiskSize specifies how large the persistent volume should be attached
 	// to the data nodes in the ES cluster
