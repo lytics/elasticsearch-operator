@@ -27,32 +27,43 @@ package main
 import (
 	"flag"
 	"fmt"
+	"net"
+	"net/http"
 	"os"
 	"os/signal"
 	"sync"
 	"syscall"
 
 	"github.com/Sirupsen/logrus"
+	"github.com/heptiolabs/healthcheck"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
+
 	"github.com/upmc-enterprises/elasticsearch-operator/pkg/controller"
+	"github.com/upmc-enterprises/elasticsearch-operator/pkg/k8sutil"
 	"github.com/upmc-enterprises/elasticsearch-operator/pkg/processor"
-	"github.com/upmc-enterprises/elasticsearch-operator/util/k8sutil"
 )
 
 var (
-	appVersion = "0.0.1"
+	appVersion = "0.3.0"
 
-	printVersion bool
-	baseImage    string
-	kubeCfgFile  string
-	masterHost   string
-	namespace    = os.Getenv("NAMESPACE")
+	printVersion           bool
+	baseImage              string
+	kubeCfgFile            string
+	masterHost             string
+	enableInitDaemonset    bool
+	initDaemonsetNamespace string
+	busyboxImage           string
 )
 
 func init() {
 	flag.BoolVar(&printVersion, "version", false, "Show version and quit")
-	flag.StringVar(&baseImage, "baseImage", "upmcenterprises/docker-elasticsearch-kubernetes:5.1.1", "Base image to use when spinning up the elasticsearch components.")
+	flag.StringVar(&baseImage, "baseImage", "upmcenterprises/docker-elasticsearch-kubernetes:6.1.3_0", "Base image to use when spinning up the elasticsearch components.")
 	flag.StringVar(&kubeCfgFile, "kubecfg-file", "", "Location of kubecfg file for access to kubernetes master service; --kube_master_url overrides the URL part of this; if neither this nor --kube_master_url are provided, defaults to service account tokens")
 	flag.StringVar(&masterHost, "masterhost", "http://127.0.0.1:8001", "Full url to k8s api server")
+	flag.BoolVar(&enableInitDaemonset, "enableInitDaemonset", true, "Set to false to disable the sysctl init daemonset")
+	flag.StringVar(&initDaemonsetNamespace, "initDaemonsetNamespace", "default", "Namespace to deploy the sysctl init daemonset into")
+	flag.StringVar(&busyboxImage, "busybox-image", "busybox:1.26.2", "Image to use for sysctl init daemonset")
 	flag.Parse()
 }
 
@@ -67,20 +78,41 @@ func Main() int {
 
 	// Print params configured
 	logrus.Info("Using Variables:")
+	logrus.Infof("   enableInitDaemonset: %t", enableInitDaemonset)
 	logrus.Infof("   baseImage: %s", baseImage)
 
 	// Init
-	k8sclient, err := k8sutil.New(kubeCfgFile, masterHost)
-	controller, err := controller.New("elasticcluster", namespace, k8sclient)
-	processor, err := processor.New(k8sclient, baseImage)
+	k8sclient, err := k8sutil.New(kubeCfgFile, masterHost, enableInitDaemonset, initDaemonsetNamespace, busyboxImage)
+	if err != nil {
+		logrus.Error("Could not init k8sclient! ", err)
+		return 1
+	}
 
+	controller, err := controller.New("elasticcluster", k8sclient)
 	if err != nil {
 		logrus.Error("Could not init Controller! ", err)
 		return 1
 	}
 
+	processor, err := processor.New(k8sclient, baseImage)
+	if err != nil {
+		logrus.Error("Could not init processor! ", err)
+		return 1
+	}
+
 	doneChan := make(chan struct{})
 	var wg sync.WaitGroup
+
+	r := prometheus.NewRegistry()
+	r.MustRegister(prometheus.NewProcessCollector(os.Getpid(), ""))
+	r.MustRegister(prometheus.NewGoCollector())
+
+	health := healthcheck.NewMetricsHandler(r, "elasticsearch-operator")
+
+	mux := http.NewServeMux()
+	mux.Handle("/metrics", promhttp.HandlerFor(r, promhttp.HandlerOpts{}))
+	mux.HandleFunc("/live", health.LiveEndpoint)
+	mux.HandleFunc("/ready", health.ReadyEndpoint)
 
 	// Kick it off
 	controller.Run()
@@ -88,9 +120,19 @@ func Main() int {
 
 	// Watch for events that add, modify, or delete ElasticSearchCluster definitions andlog
 	// process them asynchronously.
-	logrus.Info("Watching for elastic search events...")
+	logrus.Info("Watching for elasticsearch events...")
 	wg.Add(1)
 	processor.WatchElasticSearchClusterEvents(doneChan, &wg)
+	wg.Add(1)
+	processor.WatchDataPodEvents(doneChan, &wg)
+
+	srv := &http.Server{Handler: mux}
+
+	l, err := net.Listen("tcp", ":8000")
+	if err != nil {
+		logrus.Fatal(err)
+	}
+	go srv.Serve(l)
 
 	signalChan := make(chan os.Signal, 1)
 	signal.Notify(signalChan, syscall.SIGINT, syscall.SIGTERM)

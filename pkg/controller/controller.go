@@ -26,12 +26,11 @@ package controller
 
 import (
 	"github.com/Sirupsen/logrus"
-	"github.com/upmc-enterprises/elasticsearch-operator/util/k8sutil"
+	"github.com/upmc-enterprises/elasticsearch-operator/pkg/k8sutil"
 )
 
 // Config defines properties of the controller
 type Config struct {
-	Namespace string
 	k8sclient *k8sutil.K8sutil
 }
 
@@ -41,11 +40,10 @@ type Controller struct {
 }
 
 // New up a Controller
-func New(name, ns string, k8sclient *k8sutil.K8sutil) (*Controller, error) {
+func New(name string, k8sclient *k8sutil.K8sutil) (*Controller, error) {
 
 	c := &Controller{
 		Config: Config{
-			Namespace: ns,
 			k8sclient: k8sclient,
 		},
 	}
@@ -68,9 +66,16 @@ func (c *Controller) Run() error {
 }
 
 func (c *Controller) init() error {
-	err := c.k8sclient.CreateKubernetesThirdPartyResource()
+	err := c.k8sclient.CreateKubernetesCustomResourceDefinition()
 	if err != nil {
 		return err
+	}
+
+	if c.k8sclient.EnableInitDaemonset {
+		err = c.k8sclient.CreateNodeInitDaemonset()
+		if err != nil {
+			return err
+		}
 	}
 
 	return nil
